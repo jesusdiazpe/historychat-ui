@@ -12,7 +12,6 @@ import {
   Sparkles
 } from "lucide-vue-next";
 
-//const API_URL = "http://localhost:3000";
 const API_URL = import.meta.env.VITE_API_URL;
 
 const query = ref("");
@@ -27,6 +26,8 @@ const offset = ref(0);
 const limit = 50;
 
 const selectedMessageId = ref(null);
+const selectedResultIds = ref([]);
+
 const audioPlayer = ref(null);
 const reading = ref(false);
 
@@ -54,6 +55,7 @@ async function searchMessages(reset = true) {
     results.value = [];
     contextMessages.value = [];
     selectedMessageId.value = null;
+    selectedResultIds.value = [];
     offset.value = 0;
     hasMore.value = true;
     return;
@@ -63,6 +65,7 @@ async function searchMessages(reset = true) {
     results.value = [];
     contextMessages.value = [];
     selectedMessageId.value = null;
+    selectedResultIds.value = [];
     offset.value = 0;
     hasMore.value = true;
   }
@@ -122,29 +125,28 @@ async function openContext(messageId) {
   }
 }
 
-function formatDate(date) {
-  return new Date(date).toLocaleString("es-PE", {
-    dateStyle: "medium",
-    timeStyle: "short"
-  });
+function toggleResultSelection(messageId) {
+  if (selectedResultIds.value.includes(messageId)) {
+    selectedResultIds.value = selectedResultIds.value.filter(id => id !== messageId);
+  } else {
+    selectedResultIds.value.push(messageId);
+  }
 }
 
-function isMine(sender) {
-  return sender?.toLowerCase().includes("alejandro");
+function clearSelection() {
+  selectedResultIds.value = [];
 }
 
-function buildContextText() {
-  return contextMessages.value
+function buildSelectedText() {
+  return results.value
+    .filter(m => selectedResultIds.value.includes(m.id))
     .filter(m => m.content)
-    .map(m => {
-      const name = isMine(m.sender_name) ? "Alejandro" : "Ella";
-      return `${name} dijo: ${m.content}`;
-    })
+    .map(m => m.content)
     .join(". ");
 }
 
-async function readContext() {
-  const text = buildContextText();
+async function readSelectedResults() {
+  const text = buildSelectedText();
 
   if (!text) return;
 
@@ -185,6 +187,17 @@ function stopReading() {
   }
 
   reading.value = false;
+}
+
+function formatDate(date) {
+  return new Date(date).toLocaleString("es-PE", {
+    dateStyle: "medium",
+    timeStyle: "short"
+  });
+}
+
+function isMine(sender) {
+  return sender?.toLowerCase().includes("alejandro");
 }
 
 const categories = [
@@ -286,12 +299,46 @@ onMounted(() => {
         </aside>
 
         <section class="rounded-3xl border border-white/10 bg-white/[0.04] p-4">
-          <div class="mb-4 flex items-center justify-between">
-            <h2 class="text-xl font-bold">Resultados</h2>
+          <div class="mb-4 flex flex-col gap-3">
+            <div class="flex items-center justify-between">
+              <h2 class="text-xl font-bold">Resultados</h2>
 
-            <span class="text-sm text-slate-400">
-              {{ results.length }} cargados
-            </span>
+              <span class="text-sm text-slate-400">
+                {{ results.length }} cargados
+              </span>
+            </div>
+
+            <div class="flex items-center justify-between gap-2 rounded-2xl bg-black/30 p-3">
+              <span class="text-sm text-slate-400">
+                {{ selectedResultIds.length }} seleccionados
+              </span>
+
+              <div class="flex gap-2">
+                <button
+                  @click="readSelectedResults"
+                  :disabled="!selectedResultIds.length || reading"
+                  class="rounded-xl bg-cyan-400 px-3 py-2 text-xs font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {{ reading ? "Preparando..." : "▶ Leer seleccionados" }}
+                </button>
+
+                <button
+                  @click="stopReading"
+                  :disabled="!reading"
+                  class="rounded-xl bg-white/10 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  ■ Detener
+                </button>
+
+                <button
+                  @click="clearSelection"
+                  :disabled="!selectedResultIds.length"
+                  class="rounded-xl bg-white/10 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Limpiar
+                </button>
+              </div>
+            </div>
           </div>
 
           <div v-if="loading" class="rounded-2xl bg-black/30 p-6 text-slate-400">
@@ -312,22 +359,37 @@ onMounted(() => {
               :key="message.id"
               @click="openContext(message.id)"
               class="cursor-pointer rounded-2xl border border-white/10 bg-black/30 p-4 transition hover:border-cyan-400/40 hover:bg-cyan-400/5"
-              :class="selectedMessageId === message.id ? 'border-cyan-400/60 bg-cyan-400/10' : ''"
+              :class="[
+                selectedMessageId === message.id ? 'border-cyan-400/60 bg-cyan-400/10' : '',
+                selectedResultIds.includes(message.id) ? 'ring-2 ring-yellow-300/50' : ''
+              ]"
             >
-              <div class="mb-2 flex items-center justify-between gap-3">
-                <p class="font-semibold text-cyan-200">
-                  {{ message.sender_name }}
-                </p>
+              <div class="mb-2 flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  class="mt-1 h-4 w-4 cursor-pointer accent-cyan-400"
+                  :checked="selectedResultIds.includes(message.id)"
+                  @click.stop
+                  @change="toggleResultSelection(message.id)"
+                />
 
-                <p class="text-xs text-slate-500">
-                  {{ formatDate(message.date) }}
-                </p>
+                <div class="min-w-0 flex-1">
+                  <div class="mb-2 flex items-center justify-between gap-3">
+                    <p class="font-semibold text-cyan-200">
+                      {{ message.sender_name }}
+                    </p>
+
+                    <p class="text-xs text-slate-500">
+                      {{ formatDate(message.date) }}
+                    </p>
+                  </div>
+
+                  <p
+                    class="line-clamp-3 text-slate-300"
+                    v-html="highlightText(message.content || `[${message.type}]`)"
+                  ></p>
+                </div>
               </div>
-
-              <p
-                class="line-clamp-3 text-slate-300"
-                v-html="highlightText(message.content || `[${message.type}]`)"
-              ></p>
             </article>
 
             <div
@@ -347,30 +409,10 @@ onMounted(() => {
         </section>
 
         <section class="rounded-3xl border border-white/10 bg-white/[0.04] p-4">
-          <div class="mb-4 flex items-center justify-between gap-2">
-  <div class="flex items-center gap-2">
-    <MessageCircle class="h-5 w-5 text-cyan-300" />
-    <h2 class="text-xl font-bold">Contexto</h2>
-  </div>
-
-  <div class="flex gap-2">
-    <button
-      @click="readContext"
-      :disabled="!contextMessages.length || reading"
-      class="rounded-xl bg-cyan-400 px-3 py-2 text-xs font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50"
-    >
-      {{ reading ? "Leyendo..." : "▶ Leer" }}
-    </button>
-
-    <button
-      @click="stopReading"
-      :disabled="!reading"
-      class="rounded-xl bg-white/10 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50"
-    >
-      ■ Detener
-    </button>
-  </div>
-</div>
+          <div class="mb-4 flex items-center gap-2">
+            <MessageCircle class="h-5 w-5 text-cyan-300" />
+            <h2 class="text-xl font-bold">Contexto</h2>
+          </div>
 
           <div v-if="!contextMessages.length" class="rounded-2xl bg-black/30 p-6 text-slate-400">
             Haz clic en un resultado para ver los mensajes cercanos.
