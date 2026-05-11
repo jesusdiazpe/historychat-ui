@@ -29,6 +29,7 @@ const selectedMessageId = ref(null);
 const selectedContextIds = ref([]);
 
 const audioPlayer = ref(null);
+const currentlyReadingId = ref(null);
 const reading = ref(false);
 
 async function loadStats() {
@@ -147,36 +148,63 @@ function buildSelectedText() {
 }
 
 async function readSelectedContext() {
-  const text = buildSelectedText();
-
-  if (!text) return;
-
   stopReading();
+
+  const selectedMessages = contextMessages.value
+    .filter(m => selectedContextIds.value.includes(m.id))
+    .filter(m => m.content);
+
+  if (!selectedMessages.length) {
+    return;
+  }
+
   reading.value = true;
 
   try {
-    const response = await axios.post(
-      `${API_URL}/api/tts`,
-      { text },
-      { responseType: "blob" }
-    );
+    for (const message of selectedMessages) {
+      currentlyReadingId.value = message.id;
 
-    const audioUrl = URL.createObjectURL(response.data);
+      const speaker = isMine(message.sender_name)
+        ? "male"
+        : "female";
+
+      const response = await axios.post(
+        `${API_URL}/api/tts`,
+        {
+          text: message.content,
+          speaker
+        },
+        {
+          responseType: "blob"
+        }
+      );
+
+      const audioUrl = URL.createObjectURL(response.data);
+
+      await playAudio(audioUrl);
+    }
+  } catch (error) {
+    console.error(error);
+  } finally {
+    stopReading();
+  }
+}
+
+function playAudio(audioUrl) {
+  return new Promise((resolve, reject) => {
     const audio = new Audio(audioUrl);
 
     audioPlayer.value = audio;
 
     audio.onended = () => {
-      reading.value = false;
       URL.revokeObjectURL(audioUrl);
-      audioPlayer.value = null;
+      resolve();
     };
 
-    await audio.play();
-  } catch (error) {
-    console.error(error);
-    reading.value = false;
-  }
+    audio.onerror = reject;
+
+    audio.play();
+  });
 }
 
 function stopReading() {
@@ -186,6 +214,7 @@ function stopReading() {
     audioPlayer.value = null;
   }
 
+  currentlyReadingId.value = null;
   reading.value = false;
 }
 
@@ -423,8 +452,12 @@ onMounted(() => {
                     : 'border-transparent',
 
                   selectedContextIds.includes(message.id)
-                    ? 'ring-2 ring-yellow-300/60'
-                    : ''
+  ? 'ring-2 ring-yellow-300/60'
+  : '',
+
+currentlyReadingId === message.id
+  ? 'ring-4 ring-cyan-400 shadow-[0_0_35px_rgba(34,211,238,0.6)]'
+  : ''
                 ]"
               >
                 <div class="mb-2 flex items-start justify-between gap-3">
