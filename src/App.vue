@@ -26,7 +26,7 @@ const offset = ref(0);
 const limit = 50;
 
 const selectedMessageId = ref(null);
-const selectedResultIds = ref([]);
+const selectedContextIds = ref([]);
 
 const audioPlayer = ref(null);
 const reading = ref(false);
@@ -55,7 +55,7 @@ async function searchMessages(reset = true) {
     results.value = [];
     contextMessages.value = [];
     selectedMessageId.value = null;
-    selectedResultIds.value = [];
+    selectedContextIds.value = [];
     offset.value = 0;
     hasMore.value = true;
     return;
@@ -65,7 +65,7 @@ async function searchMessages(reset = true) {
     results.value = [];
     contextMessages.value = [];
     selectedMessageId.value = null;
-    selectedResultIds.value = [];
+    selectedContextIds.value = [];
     offset.value = 0;
     hasMore.value = true;
   }
@@ -96,9 +96,7 @@ async function searchMessages(reset = true) {
 
 async function handleResultsScroll(event) {
   const el = event.target;
-
-  const nearBottom =
-    el.scrollTop + el.clientHeight >= el.scrollHeight - 200;
+  const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 200;
 
   if (nearBottom && hasMore.value && !loadingMore.value && !loading.value) {
     await searchMessages(false);
@@ -107,6 +105,7 @@ async function handleResultsScroll(event) {
 
 async function openContext(messageId) {
   selectedMessageId.value = messageId;
+  selectedContextIds.value = [];
 
   const { data } = await axios.get(`${API_URL}/api/context/${messageId}`);
   contextMessages.value = data;
@@ -125,33 +124,34 @@ async function openContext(messageId) {
   }
 }
 
-function toggleResultSelection(messageId) {
-  if (selectedResultIds.value.includes(messageId)) {
-    selectedResultIds.value = selectedResultIds.value.filter(id => id !== messageId);
+function toggleContextSelection(messageId) {
+  if (selectedContextIds.value.includes(messageId)) {
+    selectedContextIds.value = selectedContextIds.value.filter(
+      id => id !== messageId
+    );
   } else {
-    selectedResultIds.value.push(messageId);
+    selectedContextIds.value.push(messageId);
   }
 }
 
 function clearSelection() {
-  selectedResultIds.value = [];
+  selectedContextIds.value = [];
 }
 
 function buildSelectedText() {
-  return results.value
-    .filter(m => selectedResultIds.value.includes(m.id))
+  return contextMessages.value
+    .filter(m => selectedContextIds.value.includes(m.id))
     .filter(m => m.content)
     .map(m => m.content)
     .join(". ");
 }
 
-async function readSelectedResults() {
+async function readSelectedContext() {
   const text = buildSelectedText();
 
   if (!text) return;
 
   stopReading();
-
   reading.value = true;
 
   try {
@@ -299,46 +299,12 @@ onMounted(() => {
         </aside>
 
         <section class="rounded-3xl border border-white/10 bg-white/[0.04] p-4">
-          <div class="mb-4 flex flex-col gap-3">
-            <div class="flex items-center justify-between">
-              <h2 class="text-xl font-bold">Resultados</h2>
+          <div class="mb-4 flex items-center justify-between">
+            <h2 class="text-xl font-bold">Resultados</h2>
 
-              <span class="text-sm text-slate-400">
-                {{ results.length }} cargados
-              </span>
-            </div>
-
-            <div class="flex items-center justify-between gap-2 rounded-2xl bg-black/30 p-3">
-              <span class="text-sm text-slate-400">
-                {{ selectedResultIds.length }} seleccionados
-              </span>
-
-              <div class="flex gap-2">
-                <button
-                  @click="readSelectedResults"
-                  :disabled="!selectedResultIds.length || reading"
-                  class="rounded-xl bg-cyan-400 px-3 py-2 text-xs font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {{ reading ? "Preparando..." : "▶ Leer seleccionados" }}
-                </button>
-
-                <button
-                  @click="stopReading"
-                  :disabled="!reading"
-                  class="rounded-xl bg-white/10 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  ■ Detener
-                </button>
-
-                <button
-                  @click="clearSelection"
-                  :disabled="!selectedResultIds.length"
-                  class="rounded-xl bg-white/10 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Limpiar
-                </button>
-              </div>
-            </div>
+            <span class="text-sm text-slate-400">
+              {{ results.length }} cargados
+            </span>
           </div>
 
           <div v-if="loading" class="rounded-2xl bg-black/30 p-6 text-slate-400">
@@ -359,37 +325,22 @@ onMounted(() => {
               :key="message.id"
               @click="openContext(message.id)"
               class="cursor-pointer rounded-2xl border border-white/10 bg-black/30 p-4 transition hover:border-cyan-400/40 hover:bg-cyan-400/5"
-              :class="[
-                selectedMessageId === message.id ? 'border-cyan-400/60 bg-cyan-400/10' : '',
-                selectedResultIds.includes(message.id) ? 'ring-2 ring-yellow-300/50' : ''
-              ]"
+              :class="selectedMessageId === message.id ? 'border-cyan-400/60 bg-cyan-400/10' : ''"
             >
-              <div class="mb-2 flex items-start gap-3">
-                <input
-                  type="checkbox"
-                  class="mt-1 h-4 w-4 cursor-pointer accent-cyan-400"
-                  :checked="selectedResultIds.includes(message.id)"
-                  @click.stop
-                  @change="toggleResultSelection(message.id)"
-                />
+              <div class="mb-2 flex items-center justify-between gap-3">
+                <p class="font-semibold text-cyan-200">
+                  {{ message.sender_name }}
+                </p>
 
-                <div class="min-w-0 flex-1">
-                  <div class="mb-2 flex items-center justify-between gap-3">
-                    <p class="font-semibold text-cyan-200">
-                      {{ message.sender_name }}
-                    </p>
-
-                    <p class="text-xs text-slate-500">
-                      {{ formatDate(message.date) }}
-                    </p>
-                  </div>
-
-                  <p
-                    class="line-clamp-3 text-slate-300"
-                    v-html="highlightText(message.content || `[${message.type}]`)"
-                  ></p>
-                </div>
+                <p class="text-xs text-slate-500">
+                  {{ formatDate(message.date) }}
+                </p>
               </div>
+
+              <p
+                class="line-clamp-3 text-slate-300"
+                v-html="highlightText(message.content || `[${message.type}]`)"
+              ></p>
             </article>
 
             <div
@@ -409,9 +360,43 @@ onMounted(() => {
         </section>
 
         <section class="rounded-3xl border border-white/10 bg-white/[0.04] p-4">
-          <div class="mb-4 flex items-center gap-2">
-            <MessageCircle class="h-5 w-5 text-cyan-300" />
-            <h2 class="text-xl font-bold">Contexto</h2>
+          <div class="mb-4 flex flex-col gap-3">
+            <div class="flex items-center gap-2">
+              <MessageCircle class="h-5 w-5 text-cyan-300" />
+              <h2 class="text-xl font-bold">Contexto</h2>
+            </div>
+
+            <div class="flex items-center justify-between gap-2 rounded-2xl bg-black/30 p-3">
+              <span class="text-sm text-slate-400">
+                {{ selectedContextIds.length }} seleccionados
+              </span>
+
+              <div class="flex gap-2">
+                <button
+                  @click="readSelectedContext"
+                  :disabled="!selectedContextIds.length || reading"
+                  class="rounded-xl bg-cyan-400 px-3 py-2 text-xs font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {{ reading ? "Preparando..." : "▶ Leer" }}
+                </button>
+
+                <button
+                  @click="stopReading"
+                  :disabled="!reading"
+                  class="rounded-xl bg-white/10 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  ■ Detener
+                </button>
+
+                <button
+                  @click="clearSelection"
+                  :disabled="!selectedContextIds.length"
+                  class="rounded-xl bg-white/10 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Limpiar
+                </button>
+              </div>
+            </div>
           </div>
 
           <div v-if="!contextMessages.length" class="rounded-2xl bg-black/30 p-6 text-slate-400">
@@ -435,12 +420,25 @@ onMounted(() => {
 
                   message.id === selectedMessageId
                     ? 'border-yellow-300 shadow-[0_0_25px_rgba(253,224,71,0.35)] scale-[1.01]'
-                    : 'border-transparent'
+                    : 'border-transparent',
+
+                  selectedContextIds.includes(message.id)
+                    ? 'ring-2 ring-yellow-300/60'
+                    : ''
                 ]"
               >
-                <p class="mb-1 text-xs font-semibold opacity-70">
-                  {{ message.sender_name }}
-                </p>
+                <div class="mb-2 flex items-start justify-between gap-3">
+                  <p class="text-xs font-semibold opacity-70">
+                    {{ message.sender_name }}
+                  </p>
+
+                  <input
+                    type="checkbox"
+                    class="mt-1 h-4 w-4 cursor-pointer accent-yellow-300"
+                    :checked="selectedContextIds.includes(message.id)"
+                    @change="toggleContextSelection(message.id)"
+                  />
+                </div>
 
                 <p
                   class="whitespace-pre-wrap text-sm leading-relaxed"
