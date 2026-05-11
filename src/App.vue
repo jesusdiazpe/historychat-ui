@@ -27,6 +27,8 @@ const offset = ref(0);
 const limit = 50;
 
 const selectedMessageId = ref(null);
+const audioPlayer = ref(null);
+const reading = ref(false);
 
 async function loadStats() {
   const { data } = await axios.get(`${API_URL}/api/stats`);
@@ -129,6 +131,60 @@ function formatDate(date) {
 
 function isMine(sender) {
   return sender?.toLowerCase().includes("alejandro");
+}
+
+function buildContextText() {
+  return contextMessages.value
+    .filter(m => m.content)
+    .map(m => {
+      const name = isMine(m.sender_name) ? "Alejandro" : "Ella";
+      return `${name} dijo: ${m.content}`;
+    })
+    .join(". ");
+}
+
+async function readContext() {
+  const text = buildContextText();
+
+  if (!text) return;
+
+  stopReading();
+
+  reading.value = true;
+
+  try {
+    const response = await axios.post(
+      `${API_URL}/api/tts`,
+      { text },
+      { responseType: "blob" }
+    );
+
+    const audioUrl = URL.createObjectURL(response.data);
+    const audio = new Audio(audioUrl);
+
+    audioPlayer.value = audio;
+
+    audio.onended = () => {
+      reading.value = false;
+      URL.revokeObjectURL(audioUrl);
+      audioPlayer.value = null;
+    };
+
+    await audio.play();
+  } catch (error) {
+    console.error(error);
+    reading.value = false;
+  }
+}
+
+function stopReading() {
+  if (audioPlayer.value) {
+    audioPlayer.value.pause();
+    audioPlayer.value.currentTime = 0;
+    audioPlayer.value = null;
+  }
+
+  reading.value = false;
 }
 
 const categories = [
@@ -291,10 +347,30 @@ onMounted(() => {
         </section>
 
         <section class="rounded-3xl border border-white/10 bg-white/[0.04] p-4">
-          <div class="mb-4 flex items-center gap-2">
-            <MessageCircle class="h-5 w-5 text-cyan-300" />
-            <h2 class="text-xl font-bold">Contexto</h2>
-          </div>
+          <div class="mb-4 flex items-center justify-between gap-2">
+  <div class="flex items-center gap-2">
+    <MessageCircle class="h-5 w-5 text-cyan-300" />
+    <h2 class="text-xl font-bold">Contexto</h2>
+  </div>
+
+  <div class="flex gap-2">
+    <button
+      @click="readContext"
+      :disabled="!contextMessages.length || reading"
+      class="rounded-xl bg-cyan-400 px-3 py-2 text-xs font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      {{ reading ? "Leyendo..." : "▶ Leer" }}
+    </button>
+
+    <button
+      @click="stopReading"
+      :disabled="!reading"
+      class="rounded-xl bg-white/10 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      ■ Detener
+    </button>
+  </div>
+</div>
 
           <div v-if="!contextMessages.length" class="rounded-2xl bg-black/30 p-6 text-slate-400">
             Haz clic en un resultado para ver los mensajes cercanos.
